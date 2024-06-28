@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from sklearn.cluster import KMeans, DBSCAN
-from sklearn.metrics import pairwise_distances_argmin_min
+from sklearn.metrics import silhouette_score, davies_bouldin_score, pairwise_distances_argmin_min
 from data_loader import load_data
 from plotly_chart import plotly_scatter_chart
 import numpy as np
@@ -117,6 +117,11 @@ def perform_kmeans_clustering(slb_data, k_clusters=8, features=['SLB Depth Diffe
     kmeans = KMeans(n_clusters=k_clusters, random_state=42)
     slb_data['cluster'] = kmeans.fit_predict(data_for_clustering)
 
+    silhouette_avg = silhouette_score(data_for_clustering, slb_data['cluster'])
+    db_index = davies_bouldin_score(data_for_clustering, slb_data['cluster'])
+    st.write(f'Silhouette Score for K-Means: {silhouette_avg}')
+    st.write(f'Davies-Bouldin Index for K-Means: {db_index}')
+
     palette = sns.color_palette("hsv", 20)
     custom_colors = [sns.color_palette(palette).as_hex()[i] for i in range(20)][:k_clusters]
 
@@ -146,7 +151,7 @@ def perform_kmeans_clustering(slb_data, k_clusters=8, features=['SLB Depth Diffe
     for cluster_id, formats_in_cluster in cluster_formats.items():
         st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
-def kmeans_clustering_page(start_date, end_date, tab_name, k_clusters):  
+def kmeans_clustering_page(start_date, end_date, tab_name, k_clusters):
     st.title('K-Means Clustering')
 
     slb_data_for_clustering = load_slb_data_with_date_range(start_date, end_date)
@@ -155,7 +160,7 @@ def kmeans_clustering_page(start_date, end_date, tab_name, k_clusters):
 
     return slb_data_for_clustering
 
-def kmeans_by_total_variation(slb_data, k_clusters, features=['SLB Depth Difference', 'SLB Horizontal Difference'], k_values=range(1, 21)):
+def kmeans_by_total_variation(slb_data, features=['SLB Depth Difference', 'SLB Horizontal Difference'], k_values=range(1, 21)):
     slb_cluster_data = slb_data[features]
 
     scaler = StandardScaler()
@@ -373,6 +378,32 @@ def perform_clustering(slb_data, k_clusters):
 
     return slb_data[['SLB origin time', 'Cluster']]
 
+def plot_kmeans_metrics(slb_data, features):
+    k_values = range(2, 21)
+    silhouette_scores = []
+    db_scores = []
+
+    data_for_clustering = slb_data[features].dropna()
+    scaler = StandardScaler()
+    data_for_clustering_scaled = scaler.fit_transform(data_for_clustering)
+
+    for k in k_values:
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        labels = kmeans.fit_predict(data_for_clustering_scaled)
+        silhouette_scores.append(silhouette_score(data_for_clustering_scaled, labels))
+        db_scores.append(davies_bouldin_score(data_for_clustering_scaled, labels))
+
+    fig, ax1 = plt.subplots()
+    ax1.plot(k_values, silhouette_scores, 'b-')
+    ax1.set_xlabel('Number of clusters (k)')
+    ax1.set_ylabel('Silhouette Score', color='b')
+
+    ax2 = ax1.twinx()
+    ax2.plot(k_values, db_scores, 'r-')
+    ax2.set_ylabel('Davies-Bouldin Index', color='r')
+
+    st.pyplot(fig)
+
 def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB Depth Difference', 'SLB Horizontal Difference']):
     st.markdown("""
     Performs DBSCAN clustering on the provided dataset.
@@ -397,6 +428,9 @@ def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB D
     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
     slb_data['cluster'] = dbscan.fit_predict(data_for_clustering_scaled)
 
+    silhouette_avg = silhouette_score(data_for_clustering_scaled, slb_data['cluster'])
+    st.write(f'Silhouette Score for DBSCAN: {silhouette_avg}')
+
     unique_clusters = slb_data['cluster'].unique()
     custom_colors = px.colors.qualitative.Plotly[:len(unique_clusters)]
 
@@ -420,6 +454,30 @@ def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB D
     for cluster_id, formats_in_cluster in cluster_formats.items():
         st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
+def plot_dbscan_metrics(slb_data, features):
+    eps_values = np.arange(0.1, 2.0, 0.1)
+    min_samples_values = range(1, 20)
+    silhouette_scores = []
+
+    data_for_clustering = slb_data[features].dropna()
+    scaler = StandardScaler()
+    data_for_clustering_scaled = scaler.fit_transform(data_for_clustering)
+
+    for eps in eps_values:
+        dbscan = DBSCAN(eps=eps, min_samples=5)
+        labels = dbscan.fit_predict(data_for_clustering_scaled)
+        if len(set(labels)) > 1:  # at least 2 clusters should be there
+            silhouette_scores.append(silhouette_score(data_for_clustering_scaled, labels))
+        else:
+            silhouette_scores.append(-1)  # if only one cluster
+
+    fig, ax1 = plt.subplots()
+    ax1.plot(eps_values, silhouette_scores, 'b-')
+    ax1.set_xlabel('Epsilon (eps)')
+    ax1.set_ylabel('Silhouette Score', color='b')
+    
+    st.pyplot(fig)
+
 tab_viz, tab_kmeans, tab_dbscan, tab_tv, tab_normalize = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "K-Means Optimal", "Normalized"])
 
 with tab_viz:
@@ -427,15 +485,20 @@ with tab_viz:
 
 with tab_kmeans:
     start_date, end_date = get_date_input("tab_kmeans")
+    slb_data = load_slb_data_with_date_range(start_date, end_date)
     kmeans_clustering_page(start_date, end_date, "tab_kmeans", k_clusters)
+    st.title('K-Means Metrics')
+    plot_kmeans_metrics(slb_data, features=['SLB Depth Difference', 'SLB Horizontal Difference'])
 
 with tab_dbscan:
     st.title('DBSCAN Clustering')
-    eps = st.slider("Select epsilon (eps) value", min_value=0.1, max_value=1.0, step=0.1, value=0.5)
-    min_samples = st.slider("Select min_samples value", min_value=1, max_value=10, step=1, value=5)
+    eps = st.slider("Select epsilon (eps) value", min_value=0.1, max_value=2.0, step=0.1, value=0.5)
+    min_samples = st.slider("Select min_samples value", min_value=1, max_value=20, step=1, value=5)
     start_date, end_date = get_date_input("tab_dbscan")
     slb_data_for_clustering = load_slb_data_with_date_range(start_date, end_date)
     perform_dbscan_clustering(slb_data_for_clustering, eps=eps, min_samples=min_samples)
+    st.title('DBSCAN Metrics')
+    plot_dbscan_metrics(slb_data_for_clustering, features=['SLB Depth Difference', 'SLB Horizontal Difference'])
 
 with tab_tv:
     start_date, end_date = get_date_input("tab_tv")
@@ -449,9 +512,9 @@ with tab_tv:
         """)
     clustering_method = st.selectbox('Choose K-means Optimal Clustering Method', ['Total Variation', 'WCSS'])
     if clustering_method == "Total Variation":
-        kmeans_by_total_variation(slb_data_for_clustering, k_clusters)
+        kmeans_by_total_variation(slb_data_for_clustering, features=['SLB Depth Difference', 'SLB Horizontal Difference'])
     if clustering_method == "WCSS":
-        kmeans_by_wcss(slb_data_for_clustering)
+        kmeans_by_wcss(slb_data_for_clustering, features=['SLB Depth Difference', 'SLB Horizontal Difference'])
 
 with tab_normalize:
     st.title('Data Clustering Analysis')
@@ -480,7 +543,7 @@ with tab_normalize:
     
     if clustering_tab == "WCSS": 
         st.subheader("WCSS")
-        kmeans_by_wcss(slb_data_for_clustering)
+        kmeans_by_wcss(slb_data_for_clustering, features=['SLB Depth Difference', 'SLB Horizontal Difference'])
 
     if clustering_tab == "Normalized Time Clustering": 
         st.subheader("Normalized Time Clustering")
@@ -494,4 +557,3 @@ with tab_normalize:
         st.subheader("Depth and Normalized Time Clustering")
         perform_clustering(slb_data, k_cluster_norm)
         plot_depth_normalized_time_clustering(slb_data, k_cluster_norm)
-
