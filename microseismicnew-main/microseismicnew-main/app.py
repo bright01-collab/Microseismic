@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 import uuid
-import hdbscan  # Import HDBSCAN
+import HDBSCAN  # Import HDBSCAN
 
 dataset_key = str(uuid.uuid4())
 tabs_key = str(uuid.uuid4())
