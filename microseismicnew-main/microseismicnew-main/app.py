@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 import uuid
+import hdbscan  # Import HDBSCAN
 
 dataset_key = str(uuid.uuid4())
 tabs_key = str(uuid.uuid4())
@@ -19,7 +20,7 @@ slider_key2 = str(uuid.uuid4())
 
 dataset = st.sidebar.radio("Choose Dataset", ["SLB Data", "Relocated Data"])
 tabs = st.sidebar.radio("Choose Visualization", ["Line Chart", "Bar Chart", "Scatter Plot", "Custom Plotly Scatter Chart"])
-k_clusters = st.sidebar.slider("Select Number of Clusters", min_value=1, max_value=20, value=8)
+k_clusters = st.sidebar.slider("Select Number of Clusters", min_value=1, max_value=20, value=8, key="kmeans_slider")
 
 def generate_date_input_key(tab_name, date_type):
     return f"date_input_{tab_name}_{date_type}"
@@ -378,31 +379,51 @@ def perform_clustering(slb_data, k_clusters):
 
     return slb_data[['SLB origin time', 'Cluster']]
 
-def plot_kmeans_metrics(slb_data, features):
-    k_values = range(2, 21)
-    silhouette_scores = []
-    db_scores = []
+def plot_kmeans_horizontal_vs_time(slb_data, k_clusters):
+    fig = go.Figure()
+    features = ['SLB Horizontal Difference', 'Timestamp']
+    slb_data['Timestamp'] = pd.to_datetime(slb_data['SLB origin time']).astype(np.int64) // 10**9
+    kmeans = KMeans(n_clusters=k_clusters, random_state=42)
+    slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
 
-    data_for_clustering = slb_data[features].dropna()
-    scaler = StandardScaler()
-    data_for_clustering_scaled = scaler.fit_transform(data_for_clustering)
+    for cluster_id in range(k_clusters):
+        cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
+        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference'], y=cluster_data['Timestamp'], 
+                                 mode='markers', name=f'Cluster {cluster_id}',
+                                 text=cluster_data['Year/Mo. Category'],  
+                                 hoverinfo='text'))
 
-    for k in k_values:
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        labels = kmeans.fit_predict(data_for_clustering_scaled)
-        silhouette_scores.append(silhouette_score(data_for_clustering_scaled, labels))
-        db_scores.append(davies_bouldin_score(data_for_clustering_scaled, labels))
+    fig.update_layout(title='K-Means Clustering of SLB Data: Horizontal Difference vs Time',
+                      xaxis_title='SLB Horizontal Difference', yaxis_title='Timestamp')
+    st.plotly_chart(fig)
+    
+    cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
+    for cluster_id, formats_in_cluster in cluster_formats.items():
+        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
-    fig, ax1 = plt.subplots()
-    ax1.plot(k_values, silhouette_scores, 'b-')
-    ax1.set_xlabel('Number of clusters (k)')
-    ax1.set_ylabel('Silhouette Score', color='b')
+def plot_kmeans_normalized_horizontal_vs_time(slb_data, k_clusters):
+    fig = go.Figure()
+    slb_data['Timestamp'] = pd.to_datetime(slb_data['SLB origin time']).astype(np.int64) // 10**9
+    slb_data['Normalized Time'] = (slb_data['Timestamp'] - slb_data['Timestamp'].min()) / (slb_data['Timestamp'].max() - slb_data['Timestamp'].min())
+    slb_data['Normalized Horizontal Difference'] = (slb_data['SLB Horizontal Difference'] - slb_data['SLB Horizontal Difference'].min()) / (slb_data['SLB Horizontal Difference'].max() - slb_data['SLB Horizontal Difference'].min())
+    features = ['Normalized Horizontal Difference', 'Normalized Time']
+    kmeans = KMeans(n_clusters=k_clusters, random_state=42)
+    slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
 
-    ax2 = ax1.twinx()
-    ax2.plot(k_values, db_scores, 'r-')
-    ax2.set_ylabel('Davies-Bouldin Index', color='r')
+    for cluster_id in range(k_clusters):
+        cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
+        fig.add_trace(go.Scatter(x=cluster_data['Normalized Horizontal Difference'], y=cluster_data['Normalized Time'], 
+                                 mode='markers', name=f'Cluster {cluster_id}',
+                                 text=cluster_data['Year/Mo. Category'],  
+                                 hoverinfo='text'))
 
-    st.pyplot(fig)
+    fig.update_layout(title='K-Means Clustering of SLB Data: Normalized Horizontal Difference vs Normalized Time',
+                      xaxis_title='Normalized Horizontal Difference', yaxis_title='Normalized Time')
+    st.plotly_chart(fig)
+    
+    cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
+    for cluster_id, formats_in_cluster in cluster_formats.items():
+        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
 def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB Depth Difference', 'SLB Horizontal Difference']):
     st.markdown("""
@@ -454,31 +475,56 @@ def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB D
     for cluster_id, formats_in_cluster in cluster_formats.items():
         st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
-def plot_dbscan_metrics(slb_data, features):
-    eps_values = np.arange(0.1, 2.0, 0.1)
-    min_samples_values = range(1, 20)
-    silhouette_scores = []
+def perform_hdbscan_clustering(slb_data, min_cluster_size=5, features=['SLB Depth Difference', 'SLB Horizontal Difference']):
+    st.markdown("""
+    Performs HDBSCAN clustering on the provided dataset.
+
+    HDBSCAN (Hierarchical Density-Based Spatial Clustering of Applications with Noise) is an extension of DBSCAN 
+    that can find clusters of varying densities and sizes. It builds a hierarchy of clusters and uses 
+    stability-based clustering to extract a flat partition.
+
+    **Parameters:**
+    - min_cluster_size: The minimum size of clusters.
+    """)
+    st.write("Performing HDBSCAN Clustering on Dataset...")
+
+    slb_data['Year/Mo. Category'] = slb_data['Year/Mo. Category'].astype(str)
 
     data_for_clustering = slb_data[features].dropna()
+
     scaler = StandardScaler()
     data_for_clustering_scaled = scaler.fit_transform(data_for_clustering)
 
-    for eps in eps_values:
-        dbscan = DBSCAN(eps=eps, min_samples=5)
-        labels = dbscan.fit_predict(data_for_clustering_scaled)
-        if len(set(labels)) > 1:  # at least 2 clusters should be there
-            silhouette_scores.append(silhouette_score(data_for_clustering_scaled, labels))
-        else:
-            silhouette_scores.append(-1)  # if only one cluster
+    hdb = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size)
+    slb_data['cluster'] = hdb.fit_predict(data_for_clustering_scaled)
 
-    fig, ax1 = plt.subplots()
-    ax1.plot(eps_values, silhouette_scores, 'b-')
-    ax1.set_xlabel('Epsilon (eps)')
-    ax1.set_ylabel('Silhouette Score', color='b')
+    silhouette_avg = silhouette_score(data_for_clustering_scaled, slb_data['cluster'])
+    st.write(f'Silhouette Score for HDBSCAN: {silhouette_avg}')
+
+    unique_clusters = slb_data['cluster'].unique()
+    custom_colors = px.colors.qualitative.Plotly[:len(unique_clusters)]
+
+    fig = go.Figure()
+
+    for cluster_id in unique_clusters:
+        cluster_data = slb_data[slb_data['cluster'] == cluster_id]
+        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference'],
+                                 y=cluster_data['SLB Depth Difference'],
+                                 mode='markers',
+                                 marker=dict(color=custom_colors[cluster_id % len(custom_colors)]),
+                                 name=f'Cluster {cluster_id}'))
+
+    fig.update_layout(title='HDBSCAN Clustering of SLB Data',
+                      xaxis_title='SLB Horizontal Difference',
+                      yaxis_title='SLB Depth Difference')
+
+    st.plotly_chart(fig)
     
-    st.pyplot(fig)
+    cluster_formats = slb_data.groupby('cluster')['Year/Mo. Category'].unique()
+    for cluster_id, formats_in_cluster in cluster_formats.items():
+        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
-tab_viz, tab_kmeans, tab_dbscan, tab_tv, tab_normalize = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "K-Means Optimal", "Normalized"])
+tab_viz, tab_kmeans, tab_dbscan, tab_hdbscan, tab_tv, tab_normalize = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "HDBSCAN", "K-Means Optimal", "Normalized"])
 
 with tab_viz:
     data_visualization_page()
@@ -487,8 +533,6 @@ with tab_kmeans:
     start_date, end_date = get_date_input("tab_kmeans")
     slb_data = load_slb_data_with_date_range(start_date, end_date)
     kmeans_clustering_page(start_date, end_date, "tab_kmeans", k_clusters)
-    st.title('K-Means Metrics')
-    plot_kmeans_metrics(slb_data, features=['SLB Depth Difference', 'SLB Horizontal Difference'])
 
 with tab_dbscan:
     st.title('DBSCAN Clustering')
@@ -497,8 +541,13 @@ with tab_dbscan:
     start_date, end_date = get_date_input("tab_dbscan")
     slb_data_for_clustering = load_slb_data_with_date_range(start_date, end_date)
     perform_dbscan_clustering(slb_data_for_clustering, eps=eps, min_samples=min_samples)
-    st.title('DBSCAN Metrics')
-    plot_dbscan_metrics(slb_data_for_clustering, features=['SLB Depth Difference', 'SLB Horizontal Difference'])
+
+with tab_hdbscan:
+    st.title('HDBSCAN Clustering')
+    min_cluster_size = st.slider("Select minimum cluster size", min_value=2, max_value=20, step=1, value=5)
+    start_date, end_date = get_date_input("tab_hdbscan")
+    slb_data_for_clustering = load_slb_data_with_date_range(start_date, end_date)
+    perform_hdbscan_clustering(slb_data_for_clustering, min_cluster_size=min_cluster_size)
 
 with tab_tv:
     start_date, end_date = get_date_input("tab_tv")
@@ -534,7 +583,9 @@ with tab_normalize:
                                                         "WCSS",\
                                                         "Time and Depth Clustering",\
                                                         "Depth and Normalized Time Clustering",\
-                                                        "Normalized Time Clustering"
+                                                        "Normalized Time Clustering",\
+                                                        "Horizontal Difference vs Time",\
+                                                        "Normalized Horizontal Difference vs Normalized Time"
                                                         ])
     
     if clustering_tab == "Total Variation": 
@@ -557,3 +608,11 @@ with tab_normalize:
         st.subheader("Depth and Normalized Time Clustering")
         perform_clustering(slb_data, k_cluster_norm)
         plot_depth_normalized_time_clustering(slb_data, k_cluster_norm)
+    
+    if clustering_tab == "Horizontal Difference vs Time":
+        st.subheader("Horizontal Difference vs Time")
+        plot_kmeans_horizontal_vs_time(slb_data, k_cluster_norm)
+    
+    if clustering_tab == "Normalized Horizontal Difference vs Normalized Time":
+        st.subheader("Normalized Horizontal Difference vs Normalized Time")
+        plot_kmeans_normalized_horizontal_vs_time(slb_data, k_cluster_norm)
