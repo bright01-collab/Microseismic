@@ -296,6 +296,12 @@ def plot_time_depth_clustering(slb_data, k_clusters):
                     height=600, width=900)
 
     st.plotly_chart(fig)
+
+    # Add silhouette score and Davies-Bouldin index
+    silhouette_avg = silhouette_score(slb_data[features], slb_data['Cluster'])
+    db_index = davies_bouldin_score(slb_data[features], slb_data['Cluster'])
+    st.write(f'Silhouette Score for Time vs Depth Clustering: {silhouette_avg}')
+    st.write(f'Davies-Bouldin Index for Time vs Depth Clustering: {db_index}')
     
     cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
     for cluster_id, formats_in_cluster in cluster_formats.items():
@@ -395,6 +401,12 @@ def plot_kmeans_horizontal_vs_time(slb_data, k_clusters):
     fig.update_layout(title='K-Means Clustering of SLB Data: Horizontal Difference vs Time',
                       xaxis_title='SLB Horizontal Difference', yaxis_title='Timestamp')
     st.plotly_chart(fig)
+
+    # Add silhouette score and Davies-Bouldin index
+    silhouette_avg = silhouette_score(slb_data[features], slb_data['Cluster'])
+    db_index = davies_bouldin_score(slb_data[features], slb_data['Cluster'])
+    st.write(f'Silhouette Score for Horizontal Difference vs Time Clustering: {silhouette_avg}')
+    st.write(f'Davies-Bouldin Index for Horizontal Difference vs Time Clustering: {db_index}')
     
     cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
     for cluster_id, formats_in_cluster in cluster_formats.items():
