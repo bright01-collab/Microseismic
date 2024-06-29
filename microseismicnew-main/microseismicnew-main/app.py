@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 import uuid
-import HDBSCAN  # Import HDBSCAN
 
 dataset_key = str(uuid.uuid4())
 tabs_key = str(uuid.uuid4())
@@ -475,56 +474,7 @@ def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB D
     for cluster_id, formats_in_cluster in cluster_formats.items():
         st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
-def perform_hdbscan_clustering(slb_data, min_cluster_size=5, features=['SLB Depth Difference', 'SLB Horizontal Difference']):
-    st.markdown("""
-    Performs HDBSCAN clustering on the provided dataset.
-
-    HDBSCAN (Hierarchical Density-Based Spatial Clustering of Applications with Noise) is an extension of DBSCAN 
-    that can find clusters of varying densities and sizes. It builds a hierarchy of clusters and uses 
-    stability-based clustering to extract a flat partition.
-
-    **Parameters:**
-    - min_cluster_size: The minimum size of clusters.
-    """)
-    st.write("Performing HDBSCAN Clustering on Dataset...")
-
-    slb_data['Year/Mo. Category'] = slb_data['Year/Mo. Category'].astype(str)
-
-    data_for_clustering = slb_data[features].dropna()
-
-    scaler = StandardScaler()
-    data_for_clustering_scaled = scaler.fit_transform(data_for_clustering)
-
-    hdb = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size)
-    slb_data['cluster'] = hdb.fit_predict(data_for_clustering_scaled)
-
-    silhouette_avg = silhouette_score(data_for_clustering_scaled, slb_data['cluster'])
-    st.write(f'Silhouette Score for HDBSCAN: {silhouette_avg}')
-
-    unique_clusters = slb_data['cluster'].unique()
-    custom_colors = px.colors.qualitative.Plotly[:len(unique_clusters)]
-
-    fig = go.Figure()
-
-    for cluster_id in unique_clusters:
-        cluster_data = slb_data[slb_data['cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference'],
-                                 y=cluster_data['SLB Depth Difference'],
-                                 mode='markers',
-                                 marker=dict(color=custom_colors[cluster_id % len(custom_colors)]),
-                                 name=f'Cluster {cluster_id}'))
-
-    fig.update_layout(title='HDBSCAN Clustering of SLB Data',
-                      xaxis_title='SLB Horizontal Difference',
-                      yaxis_title='SLB Depth Difference')
-
-    st.plotly_chart(fig)
-    
-    cluster_formats = slb_data.groupby('cluster')['Year/Mo. Category'].unique()
-    for cluster_id, formats_in_cluster in cluster_formats.items():
-        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
-
-tab_viz, tab_kmeans, tab_dbscan, tab_hdbscan, tab_tv, tab_normalize = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "HDBSCAN", "K-Means Optimal", "Normalized"])
+tab_viz, tab_kmeans, tab_dbscan, tab_tv, tab_normalize = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "K-Means Optimal", "Normalized"])
 
 with tab_viz:
     data_visualization_page()
@@ -541,13 +491,6 @@ with tab_dbscan:
     start_date, end_date = get_date_input("tab_dbscan")
     slb_data_for_clustering = load_slb_data_with_date_range(start_date, end_date)
     perform_dbscan_clustering(slb_data_for_clustering, eps=eps, min_samples=min_samples)
-
-with tab_hdbscan:
-    st.title('HDBSCAN Clustering')
-    min_cluster_size = st.slider("Select minimum cluster size", min_value=2, max_value=20, step=1, value=5)
-    start_date, end_date = get_date_input("tab_hdbscan")
-    slb_data_for_clustering = load_slb_data_with_date_range(start_date, end_date)
-    perform_hdbscan_clustering(slb_data_for_clustering, min_cluster_size=min_cluster_size)
 
 with tab_tv:
     start_date, end_date = get_date_input("tab_tv")
