@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import NearestNeighbors
 import uuid
 
 dataset_key = str(uuid.uuid4())
@@ -486,7 +487,26 @@ def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB D
     for cluster_id, formats_in_cluster in cluster_formats.items():
         st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
-tab_viz, tab_kmeans, tab_dbscan, tab_tv, tab_normalize = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "K-Means Optimal", "Normalized"])
+def plot_k_distance_graph(data, k):
+    st.markdown("""
+    ### K-Distance Graph
+    The K-Distance graph helps to determine the optimal value for `eps` in DBSCAN. 
+    By plotting the distances of each point to its k-th nearest neighbor (sorted in ascending order), 
+    you can identify a "knee" point in the graph. The "knee" point, where the graph shows a sharp change, 
+    is a good candidate for the `eps` value.
+    """)
+    neighbors = NearestNeighbors(n_neighbors=k)
+    neighbors_fit = neighbors.fit(data)
+    distances, indices = neighbors_fit.kneighbors(data)
+    distances = np.sort(distances[:, k-1], axis=0)
+    plt.figure(figsize=(10, 6))
+    plt.plot(distances)
+    plt.title('K-Distance Graph')
+    plt.xlabel('Data Points sorted by distance')
+    plt.ylabel(f'{k}-th Nearest Neighbor Distance')
+    st.pyplot(plt)
+
+tab_viz, tab_kmeans, tab_dbscan, tab_tv, tab_normalize, tab_optimal_dbscan = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "K-Means Optimal", "Normalized", "Optimal DBSCAN"])
 
 with tab_viz:
     data_visualization_page()
@@ -571,3 +591,45 @@ with tab_normalize:
     if clustering_tab == "Normalized Horizontal Difference vs Normalized Time":
         st.subheader("Normalized Horizontal Difference vs Normalized Time")
         plot_kmeans_normalized_horizontal_vs_time(slb_data, k_cluster_norm)
+
+with tab_optimal_dbscan:
+    st.title('Optimal DBSCAN Parameters')
+    
+    # Load the data
+    start_date, end_date = get_date_input("tab_optimal_dbscan")
+    slb_data_for_clustering = load_slb_data_with_date_range(start_date, end_date)
+    
+    features = ['SLB Depth Difference', 'SLB Horizontal Difference']
+    data_for_clustering = slb_data_for_clustering[features].dropna()
+    
+    # Standardize features
+    scaler = StandardScaler()
+    data_for_clustering_scaled = scaler.fit_transform(data_for_clustering)
+    
+    st.subheader('K-Distance Graph')
+    k_value = st.slider("Select k value for K-Distance Graph", min_value=1, max_value=20, value=5)
+    plot_k_distance_graph(data_for_clustering_scaled, k_value)
+
+    st.subheader('DBSCAN Silhouette Scores')
+    eps_values = st.text_input("Enter eps values to test (comma-separated)", "0.1, 0.2, 0.3, 0.4, 0.5")
+    min_samples_values = st.text_input("Enter min_samples values to test (comma-separated)", "3, 4, 5, 6, 7")
+
+    eps_values = [float(eps) for eps in eps_values.split(',')]
+    min_samples_values = [int(ms) for ms in min_samples_values.split(',')]
+    
+    results = []
+    
+    for eps in eps_values:
+        for min_samples in min_samples_values:
+            dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+            clusters = dbscan.fit_predict(data_for_clustering_scaled)
+            if len(set(clusters)) > 1:
+                silhouette_avg = silhouette_score(data_for_clustering_scaled, clusters)
+                results.append((eps, min_samples, silhouette_avg))
+    
+    results_df = pd.DataFrame(results, columns=['eps', 'min_samples', 'silhouette_score'])
+    st.write("### Silhouette Scores for different parameter combinations")
+    st.dataframe(results_df)
+    
+    optimal_params = results_df.loc[results_df['silhouette_score'].idxmax()]
+    st.write(f"Optimal parameters: eps = {optimal_params['eps']}, min_samples = {optimal_params['min_samples']}, silhouette_score = {optimal_params['silhouette_score']}")
