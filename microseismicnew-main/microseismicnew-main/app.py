@@ -199,63 +199,9 @@ def kmeans_3d_clustering_page(start_date, end_date, k_clusters):
 
     st.plotly_chart(fig)
 
-    # Sample for silhouette score calculation to avoid MemoryError
-    sample_size = min(1000, len(slb_data[features]))  # Use a smaller sample if the dataset is very large
-    if len(slb_data[features]) > sample_size:
-        sample_data = slb_data[features].sample(n=sample_size, random_state=42)
-        sample_labels = slb_data.loc[sample_data.index, 'Cluster']
-    else:
-        sample_data = slb_data[features]
-        sample_labels = slb_data['Cluster']
-
-    silhouette_avg = silhouette_score(sample_data, sample_labels)
-    db_index = davies_bouldin_score(slb_data[features], slb_data['Cluster'])
-    st.write(f'Silhouette Score for 3D K-Means Clustering (sampled): {silhouette_avg}')
-    st.write(f'Davies-Bouldin Index for 3D K-Means Clustering: {db_index}')
-
     cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
     for cluster_id, formats_in_cluster in cluster_formats.items():
         st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
-
-def kmeans_3d_optimal_page(start_date, end_date):
-    st.title('3D K-Means Optimal')
-
-    slb_data = load_slb_data_with_date_range(start_date, end_date)
-    slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
-    slb_data['TimeInSeconds'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()).dt.total_seconds()
-    features = ['TimeInSeconds', 'SLB Depth Difference', 'SLB Horizontal Difference']
-
-    def calculate_total_variation(data, k_values):
-        total_variation = []
-        for k in k_values:
-            kmeans = KMeans(n_clusters=k, random_state=42)
-            kmeans.fit(data)
-            closest, distances = pairwise_distances_argmin_min(data, kmeans.cluster_centers_)
-            total_variation.append(sum(distances))
-        return total_variation
-
-    def calculate_wcss(data, k_values):
-        wcss = []
-        for k in k_values:
-            kmeans = KMeans(n_clusters=k, random_state=42)
-            kmeans.fit(data)
-            wcss.append(kmeans.inertia_)
-        return wcss
-
-    k_values = range(1, 21)
-    total_variation_values = calculate_total_variation(slb_data[features], k_values)
-    wcss_values = calculate_wcss(slb_data[features], k_values)
-
-    st.write("### Elbow Curve for Total Variation (3D K-Means)")
-    st.line_chart(pd.DataFrame({"k": k_values, "Total Variation": total_variation_values}).set_index("k"))
-
-    st.write("### Elbow Curve for WCSS (3D K-Means)")
-    st.line_chart(pd.DataFrame({"k": k_values, "WCSS": wcss_values}).set_index("k"))
-
-    optimal_k_tv = np.argmin(np.diff(total_variation_values)) + 1
-    optimal_k_wcss = np.argmin(np.diff(wcss_values)) + 1
-    st.write(f'Optimal number of clusters (k) based on Total Variation: {optimal_k_tv}')
-    st.write(f'Optimal number of clusters (k) based on WCSS: {optimal_k_wcss}')
 
 def kmeans_by_total_variation(slb_data, features=['SLB Depth Difference', 'SLB Horizontal Difference'], k_values=range(1, 21)):
     slb_cluster_data = slb_data[features]
@@ -621,7 +567,7 @@ def plot_k_distance_graph(data, k):
     plt.ylabel(f'{k}-th Nearest Neighbor Distance')
     st.pyplot(plt)
 
-tab_viz, tab_kmeans, tab_kmeans_3d, tab_kmeans_3d_optimal, tab_dbscan, tab_tv, tab_normalize, tab_optimal_dbscan = st.tabs(["Data Visualization", "K-Means", "3D K-Means", "3D K-Means Optimal", "DBSCAN", "K-Means Optimal", "Normalized", "Optimal DBSCAN"])
+tab_viz, tab_kmeans, tab_kmeans_3d, tab_dbscan, tab_tv, tab_normalize, tab_optimal_dbscan = st.tabs(["Data Visualization", "K-Means", "3D K-Means", "DBSCAN", "K-Means Optimal", "Normalized", "Optimal DBSCAN"])
 
 with tab_viz:
     data_visualization_page()
@@ -634,10 +580,6 @@ with tab_kmeans:
 with tab_kmeans_3d:
     start_date, end_date = get_date_input("tab_kmeans_3d")
     kmeans_3d_clustering_page(start_date, end_date, k_clusters)
-
-with tab_kmeans_3d_optimal:
-    start_date, end_date = get_date_input("tab_kmeans_3d_optimal")
-    kmeans_3d_optimal_page(start_date, end_date)
 
 with tab_dbscan:
     st.title('DBSCAN Clustering')
