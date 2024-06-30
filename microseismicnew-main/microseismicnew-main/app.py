@@ -118,9 +118,18 @@ def perform_kmeans_clustering(slb_data, k_clusters=8, features=['SLB Depth Diffe
     kmeans = KMeans(n_clusters=k_clusters, random_state=42)
     slb_data['cluster'] = kmeans.fit_predict(data_for_clustering)
 
-    silhouette_avg = silhouette_score(data_for_clustering, slb_data['cluster'])
+    # Sample for silhouette score calculation to avoid MemoryError
+    sample_size = min(1000, len(data_for_clustering))  # Use a smaller sample if the dataset is very large
+    if len(data_for_clustering) > sample_size:
+        sample_data = data_for_clustering.sample(n=sample_size, random_state=42)
+        sample_labels = slb_data.loc[sample_data.index, 'cluster']
+    else:
+        sample_data = data_for_clustering
+        sample_labels = slb_data['cluster']
+
+    silhouette_avg = silhouette_score(sample_data, sample_labels)
     db_index = davies_bouldin_score(data_for_clustering, slb_data['cluster'])
-    st.write(f'Silhouette Score for K-Means: {silhouette_avg}')
+    st.write(f'Silhouette Score for K-Means (sampled): {silhouette_avg}')
     st.write(f'Davies-Bouldin Index for K-Means: {db_index}')
 
     palette = sns.color_palette("hsv", 20)
@@ -160,6 +169,39 @@ def kmeans_clustering_page(start_date, end_date, tab_name, k_clusters):
     perform_kmeans_clustering(slb_data_for_clustering, k_clusters=k_clusters)
 
     return slb_data_for_clustering
+
+def kmeans_3d_clustering_page(start_date, end_date, k_clusters):
+    st.title('3D K-Means Clustering')
+
+    slb_data = load_slb_data_with_date_range(start_date, end_date)
+    slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
+    slb_data['TimeInSeconds'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()).dt.total_seconds()
+    features = ['TimeInSeconds', 'SLB Depth Difference', 'SLB Horizontal Difference']
+
+    kmeans = KMeans(n_clusters=k_clusters, random_state=42)
+    slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
+
+    fig = go.Figure()
+
+    for cluster_id in range(k_clusters):
+        cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
+        fig.add_trace(go.Scatter3d(x=cluster_data['TimeInSeconds'], 
+                                   y=cluster_data['SLB Depth Difference'], 
+                                   z=cluster_data['SLB Horizontal Difference'],
+                                   mode='markers', 
+                                   name=f'Cluster {cluster_id}'))
+
+    fig.update_layout(title='3D K-Means Clustering of SLB Data',
+                      scene=dict(
+                          xaxis_title='Time (Seconds)',
+                          yaxis_title='SLB Depth Difference',
+                          zaxis_title='SLB Horizontal Difference'))
+
+    st.plotly_chart(fig)
+
+    cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
+    for cluster_id, formats_in_cluster in cluster_formats.items():
+        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
 def kmeans_by_total_variation(slb_data, features=['SLB Depth Difference', 'SLB Horizontal Difference'], k_values=range(1, 21)):
     slb_cluster_data = slb_data[features]
@@ -269,66 +311,6 @@ def plot_normalized_time_clustering(slb_data, k_clusters):
     for cluster_id, formats_in_cluster in cluster_formats.items():
         st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
 
-def plot_time_depth_clustering(slb_data, k_clusters):
-    slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
-    slb_data['TimeInSeconds'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()).dt.total_seconds() + 1
-    features = ['TimeInSeconds', 'SLB Horizontal Difference', 'SLB Depth Difference']
-    kmeans = KMeans(n_clusters=k_clusters, random_state=42)
-    slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
-
-    fig = go.Figure()
-
-    for cluster_id in range(k_clusters):
-        cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['TimeInSeconds'], y=cluster_data['SLB Depth Difference'],
-                                mode='markers', name=f'Cluster {cluster_id}',
-                                text=cluster_data['Year/Mo. Category'],  
-                                hoverinfo='text')) 
-    
-    mountain_heights = {'Precambrian': -200, 'Argenta': 0, 'Mt Simon A Lower': 100, 'Mt Simon A Upper': 600, 'Mt Simon B': 800, 'Mt Simon C': 1000}
-    for mountain, height in mountain_heights.items():
-        fig.add_shape(type="line", x0=min(slb_data['TimeInSeconds']), y0=height, x1=max(slb_data['TimeInSeconds']), y1=height,
-                      line=dict(color="red", width=2))
-        fig.add_annotation(text=mountain, xref="x", yref="y", x=max(slb_data['TimeInSeconds']), y=height, showarrow=False, yshift=5, xshift=10)
-
-    fig.update_layout(title='K-Means Clustering of SLB Data based on Time and Depth Difference',
-                    xaxis_title='Time (Seconds)', yaxis_title='SLB Depth Difference',
-                    legend_title='Cluster', showlegend=True,
-                    height=600, width=900)
-
-    st.plotly_chart(fig)
-
-    # Add silhouette score and Davies-Bouldin index
-    silhouette_avg = silhouette_score(slb_data[features], slb_data['Cluster'])
-    db_index = davies_bouldin_score(slb_data[features], slb_data['Cluster'])
-    st.write(f'Silhouette Score for Time vs Depth Clustering: {silhouette_avg}')
-    st.write(f'Davies-Bouldin Index for Time vs Depth Clustering: {db_index}')
-    
-    cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
-    for cluster_id, formats_in_cluster in cluster_formats.items():
-        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
-
-def plot_depth_normalized_time_clustering(slb_data, k_clusters):
-    fig = go.Figure()
-    features = ['SLB Depth Difference', 'Normalized Time']
-    kmeans = KMeans(n_clusters=k_clusters, random_state=42)
-    slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
-
-    for cluster_id in range(k_clusters):
-        cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['SLB Depth Difference'], y=cluster_data['Normalized Time'], 
-                                 mode='markers', name=f'Cluster {cluster_id}',
-                                 text=cluster_data['Year/Mo. Category'],  
-                                 hoverinfo='text'))
-
-    fig.update_layout(title='K-Means Clustering of SLB Data',
-                      xaxis_title='SLB Depth Difference', yaxis_title='Normalized Time')
-    st.plotly_chart(fig)
-    
-    cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
-    for cluster_id, formats_in_cluster in cluster_formats.items():
-        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
-
 def normalized_kmeansby_totalVariation(slb_data, k_clusters):
 
     slb_data['Normalized Time'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()) / (slb_data['SLB origin time'].max() - slb_data['SLB origin time'].min())
@@ -369,6 +351,75 @@ def normalized_kmeansby_totalVariation(slb_data, k_clusters):
     st.write('\nUpdated SLB Data with Clusters:')
     st.write(slb_data[['SLB origin time', 'SLB Depth Difference', 'Cluster', 'Nearest Cluster Center']].head())
 
+def plot_depth_normalized_time_clustering(slb_data, k_clusters):
+    fig = go.Figure()
+    features = ['SLB Depth Difference', 'Normalized Time']
+    kmeans = KMeans(n_clusters=k_clusters, random_state=42)
+    slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
+
+    for cluster_id in range(k_clusters):
+        cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
+        fig.add_trace(go.Scatter(x=cluster_data['SLB Depth Difference'], y=cluster_data['Normalized Time'], 
+                                 mode='markers', name=f'Cluster {cluster_id}',
+                                 text=cluster_data['Year/Mo. Category'],  
+                                 hoverinfo='text'))
+
+    fig.update_layout(title='K-Means Clustering of SLB Data',
+                      xaxis_title='SLB Depth Difference', yaxis_title='Normalized Time')
+    st.plotly_chart(fig)
+    
+    cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
+    for cluster_id, formats_in_cluster in cluster_formats.items():
+        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
+
+def plot_time_depth_clustering(slb_data, k_clusters):
+    slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
+    slb_data['TimeInSeconds'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()).dt.total_seconds() + 1
+    features = ['TimeInSeconds', 'SLB Horizontal Difference', 'SLB Depth Difference']
+    kmeans = KMeans(n_clusters=k_clusters, random_state=42)
+    slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
+
+    fig = go.Figure()
+
+    for cluster_id in range(k_clusters):
+        cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
+        fig.add_trace(go.Scatter(x=cluster_data['TimeInSeconds'], y=cluster_data['SLB Depth Difference'],
+                                mode='markers', name=f'Cluster {cluster_id}',
+                                text=cluster_data['Year/Mo. Category'],  
+                                hoverinfo='text')) 
+    
+    mountain_heights = {'Precambrian': -200, 'Argenta': 0, 'Mt Simon A Lower': 100, 'Mt Simon A Upper': 600, 'Mt Simon B': 800, 'Mt Simon C': 1000}
+    for mountain, height in mountain_heights.items():
+        fig.add_shape(type="line", x0=min(slb_data['TimeInSeconds']), y0=height, x1=max(slb_data['TimeInSeconds']), y1=height,
+                      line=dict(color="red", width=2))
+        fig.add_annotation(text=mountain, xref="x", yref="y", x=max(slb_data['TimeInSeconds']), y=height, showarrow=False, yshift=5, xshift=10)
+
+    fig.update_layout(title='K-Means Clustering of SLB Data based on Time and Depth Difference',
+                    xaxis_title='Time (Seconds)', yaxis_title='SLB Depth Difference',
+                    legend_title='Cluster', showlegend=True,
+                    height=600, width=900)
+
+    st.plotly_chart(fig)
+
+    # Add silhouette score and Davies-Bouldin index
+    # Sample for silhouette score calculation to avoid MemoryError
+    sample_size = min(1000, len(slb_data[features]))  # Use a smaller sample if the dataset is very large
+    if len(slb_data[features]) > sample_size:
+        sample_data = slb_data[features].sample(n=sample_size, random_state=42)
+        sample_labels = slb_data.loc[sample_data.index, 'Cluster']
+    else:
+        sample_data = slb_data[features]
+        sample_labels = slb_data['Cluster']
+
+    silhouette_avg = silhouette_score(sample_data, sample_labels)
+    db_index = davies_bouldin_score(slb_data[features], slb_data['Cluster'])
+    st.write(f'Silhouette Score for Time vs Depth Clustering (sampled): {silhouette_avg}')
+    st.write(f'Davies-Bouldin Index for Time vs Depth Clustering: {db_index}')
+    
+    cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
+    for cluster_id, formats_in_cluster in cluster_formats.items():
+        st.write(f"Formats in Cluster {cluster_id}:", formats_in_cluster)
+
 def perform_clustering(slb_data, k_clusters):
     slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
 
@@ -387,26 +438,36 @@ def perform_clustering(slb_data, k_clusters):
 
 def plot_kmeans_horizontal_vs_time(slb_data, k_clusters):
     fig = go.Figure()
-    features = ['SLB Horizontal Difference', 'Timestamp']
-    slb_data['Timestamp'] = pd.to_datetime(slb_data['SLB origin time']).astype(np.int64) // 10**9
+    features = ['SLB Horizontal Difference', 'TimeInSeconds']
+    slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
+    slb_data['TimeInSeconds'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()).dt.total_seconds()
     kmeans = KMeans(n_clusters=k_clusters, random_state=42)
     slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
 
     for cluster_id in range(k_clusters):
         cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference'], y=cluster_data['Timestamp'], 
+        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference'], y=cluster_data['TimeInSeconds'], 
                                  mode='markers', name=f'Cluster {cluster_id}',
                                  text=cluster_data['Year/Mo. Category'],  
                                  hoverinfo='text'))
 
     fig.update_layout(title='K-Means Clustering of SLB Data: Horizontal Difference vs Time',
-                      xaxis_title='SLB Horizontal Difference', yaxis_title='Timestamp')
+                      xaxis_title='SLB Horizontal Difference', yaxis_title='Time (Seconds)')
     st.plotly_chart(fig)
 
     # Add silhouette score and Davies-Bouldin index
-    silhouette_avg = silhouette_score(slb_data[features], slb_data['Cluster'])
+    # Sample for silhouette score calculation to avoid MemoryError
+    sample_size = min(1000, len(slb_data[features]))  # Use a smaller sample if the dataset is very large
+    if len(slb_data[features]) > sample_size:
+        sample_data = slb_data[features].sample(n=sample_size, random_state=42)
+        sample_labels = slb_data.loc[sample_data.index, 'Cluster']
+    else:
+        sample_data = slb_data[features]
+        sample_labels = slb_data['Cluster']
+
+    silhouette_avg = silhouette_score(sample_data, sample_labels)
     db_index = davies_bouldin_score(slb_data[features], slb_data['Cluster'])
-    st.write(f'Silhouette Score for Horizontal Difference vs Time Clustering: {silhouette_avg}')
+    st.write(f'Silhouette Score for Horizontal Difference vs Time Clustering (sampled): {silhouette_avg}')
     st.write(f'Davies-Bouldin Index for Horizontal Difference vs Time Clustering: {db_index}')
     
     cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
@@ -506,7 +567,7 @@ def plot_k_distance_graph(data, k):
     plt.ylabel(f'{k}-th Nearest Neighbor Distance')
     st.pyplot(plt)
 
-tab_viz, tab_kmeans, tab_dbscan, tab_tv, tab_normalize, tab_optimal_dbscan = st.tabs(["Data Visualization", "K-Means", "DBSCAN", "K-Means Optimal", "Normalized", "Optimal DBSCAN"])
+tab_viz, tab_kmeans, tab_kmeans_3d, tab_dbscan, tab_tv, tab_normalize, tab_optimal_dbscan = st.tabs(["Data Visualization", "K-Means", "3D K-Means", "DBSCAN", "K-Means Optimal", "Normalized", "Optimal DBSCAN"])
 
 with tab_viz:
     data_visualization_page()
@@ -515,6 +576,10 @@ with tab_kmeans:
     start_date, end_date = get_date_input("tab_kmeans")
     slb_data = load_slb_data_with_date_range(start_date, end_date)
     kmeans_clustering_page(start_date, end_date, "tab_kmeans", k_clusters)
+
+with tab_kmeans_3d:
+    start_date, end_date = get_date_input("tab_kmeans_3d")
+    kmeans_3d_clustering_page(start_date, end_date, k_clusters)
 
 with tab_dbscan:
     st.title('DBSCAN Clustering')
