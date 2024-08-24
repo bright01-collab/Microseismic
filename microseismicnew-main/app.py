@@ -137,8 +137,8 @@ def perform_kmeans_clustering(slb_data, k_clusters=8, features=['SLB Depth Diffe
         fig.add_annotation(text=mountain, xref="x", yref="y", x=max(slb_data['SLB Horizontal Difference']), y=height, showarrow=False, yshift=5, xshift=10)
 
     fig.update_layout(title='K-Means Clustering of SLB Data',
-                      xaxis_title='SLB Horizontal Difference (ft.)',
-                      yaxis_title='SLB Depth Difference (ft.)')
+                      xaxis_title='SLB Horizontal Difference',
+                      yaxis_title='SLB Depth Difference')
 
     st.plotly_chart(fig)
     
@@ -286,7 +286,7 @@ def plot_time_depth_clustering(slb_data, k_clusters):
         fig.add_annotation(text=mountain, xref="x", yref="y", x=max(slb_data['TimeInSeconds']), y=height, showarrow=False, yshift=5, xshift=10)
 
     fig.update_layout(title='K-Means Clustering of SLB Data based on Time and Depth Difference',
-                    xaxis_title='Time (Seconds)', yaxis_title='SLB Depth Difference (ft.)',
+                    xaxis_title='Time (Seconds)', yaxis_title='SLB Depth Difference',
                     legend_title='Cluster', showlegend=True,
                     height=600, width=900)
 
@@ -310,7 +310,7 @@ def plot_depth_normalized_time_clustering(slb_data, k_clusters):
                                  hoverinfo='text'))
 
     fig.update_layout(title='K-Means Clustering of SLB Data',
-                      xaxis_title='SLB Depth Difference (ft.)', yaxis_title='Normalized Time')
+                      xaxis_title='SLB Depth Difference', yaxis_title='Normalized Time')
     st.plotly_chart(fig)
     
     cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
@@ -411,8 +411,8 @@ def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB D
                                  name=f'Cluster {cluster_id}'))
 
     fig.update_layout(title='DBSCAN Clustering of SLB Data',
-                      xaxis_title='SLB Horizontal Difference (ft.)',
-                      yaxis_title='SLB Depth Difference (ft.)')
+                      xaxis_title='SLB Horizontal Difference',
+                      yaxis_title='SLB Depth Difference')
 
     st.plotly_chart(fig)
     
