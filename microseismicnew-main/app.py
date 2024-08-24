@@ -69,7 +69,7 @@ def data_visualization_page():
     data = load_data(dataset, start_date, end_date)
 
     origin_time_col = "SLB origin time" if dataset == "SLB Data" else "Relocated origin time"
-    depth_difference_col = "SLB Depth Difference (ft.)" if dataset == "SLB Data" else "Relocated Depth Difference"
+    depth_difference_col = "SLB Depth Difference (ft.)" if dataset == "SLB Data" else "Relocated Depth Difference (ft.)"
 
     if tabs == "Line Chart":
         st.line_chart(data.set_index(origin_time_col)[depth_difference_col])
