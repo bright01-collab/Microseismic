@@ -69,7 +69,7 @@ def data_visualization_page():
     data = load_data(dataset, start_date, end_date)
 
     origin_time_col = "SLB origin time" if dataset == "SLB Data" else "Relocated origin time"
-    depth_difference_col = "SLB Depth Difference (ft.)" if dataset == "SLB Data" else "Relocated Depth Difference (ft.)"
+    depth_difference_col = "SLB Depth Difference" if dataset == "SLB Data" else "Relocated Depth Difference"
 
     if tabs == "Line Chart":
         st.line_chart(data.set_index(origin_time_col)[depth_difference_col])
@@ -87,7 +87,7 @@ def data_visualization_page():
         csv = data.to_csv(index=False)
         st.download_button(label="Download CSV", data=csv, file_name='selected_data.csv', mime='text/csv')
 
-def perform_kmeans_clustering(slb_data, k_clusters=8, features=['SLB Depth Difference (ft.)', 'SLB Horizontal Difference (ft.)']):
+def perform_kmeans_clustering(slb_data, k_clusters=8, features=['SLB Depth Difference', 'SLB Horizontal Difference']):
     st.markdown("""
     Performs K-Means clustering on the provided dataset.
 
@@ -124,21 +124,21 @@ def perform_kmeans_clustering(slb_data, k_clusters=8, features=['SLB Depth Diffe
 
     for cluster_id in range(k_clusters):
         cluster_data = slb_data[slb_data['cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference (ft.)'],
-                                 y=cluster_data['SLB Depth Difference (ft.)'],
+        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference'],
+                                 y=cluster_data['SLB Depth Difference'],
                                  mode='markers',
                                  marker=dict(color=custom_colors[cluster_id]),
                                  name=f'Cluster {cluster_id}'))
         
     mountain_heights = {'Precambrian': -200, 'Argenta': 0, 'Mt Simon A Lower': 100, 'Mt Simon A Upper': 600, 'Mt Simon B': 800, 'Mt Simon C': 1000}
     for mountain, height in mountain_heights.items():
-        fig.add_shape(type="line", x0=min(slb_data['SLB Horizontal Difference (ft.)']), y0=height, x1=max(slb_data['SLB Horizontal Difference (ft.)']), y1=height,
+        fig.add_shape(type="line", x0=min(slb_data['SLB Horizontal Difference']), y0=height, x1=max(slb_data['SLB Horizontal Difference']), y1=height,
                       line=dict(color="red", width=2))
-        fig.add_annotation(text=mountain, xref="x", yref="y", x=max(slb_data['SLB Horizontal Difference (ft.)']), y=height, showarrow=False, yshift=5, xshift=10)
+        fig.add_annotation(text=mountain, xref="x", yref="y", x=max(slb_data['SLB Horizontal Difference']), y=height, showarrow=False, yshift=5, xshift=10)
 
     fig.update_layout(title='K-Means Clustering of SLB Data',
-                      xaxis_title='SLB Horizontal Difference (ft.)',
-                      yaxis_title='SLB Depth Difference (ft.)')
+                      xaxis_title='SLB Horizontal Difference',
+                      yaxis_title='SLB Depth Difference')
 
     st.plotly_chart(fig)
     
@@ -155,7 +155,7 @@ def kmeans_clustering_page(start_date, end_date, tab_name, k_clusters):
 
     return slb_data_for_clustering
 
-def kmeans_by_total_variation(slb_data, k_clusters, features=['SLB Depth Difference (ft.)', 'SLB Horizontal Difference (ft.)'], k_values=range(1, 21)):
+def kmeans_by_total_variation(slb_data, k_clusters, features=['SLB Depth Difference', 'SLB Horizontal Difference'], k_values=range(1, 21)):
     slb_cluster_data = slb_data[features]
 
     scaler = StandardScaler()
@@ -189,9 +189,9 @@ def kmeans_by_total_variation(slb_data, k_clusters, features=['SLB Depth Differe
     slb_data['Nearest Cluster Center'] = pairwise_distances_argmin_min(slb_cluster_data_scaled, kmeans.cluster_centers_)[0] + 1
 
     st.write('\nUpdated SLB Data with Clusters:')
-    st.write(slb_data[['SLB origin time', 'SLB Depth Difference (ft.)', 'Cluster', 'Nearest Cluster Center']].head())
+    st.write(slb_data[['SLB origin time', 'SLB Depth Difference', 'Cluster', 'Nearest Cluster Center']].head())
 
-def kmeans_by_wcss(slb_data_for_clustering, features=['SLB Depth Difference (ft.)', 'SLB Horizontal Difference (ft.)'], k_values=range(1, 11)):
+def kmeans_by_wcss(slb_data_for_clustering, features=['SLB Depth Difference', 'SLB Horizontal Difference'], k_values=range(1, 11)):
     slb_cluster_data = slb_data_for_clustering[features]
 
     scaler = StandardScaler()
@@ -225,9 +225,9 @@ def kmeans_by_wcss(slb_data_for_clustering, features=['SLB Depth Difference (ft.
     slb_data_for_clustering['Nearest Cluster Center'] = pairwise_distances_argmin_min(slb_cluster_data_scaled, kmeans.cluster_centers_)[0] + 1
 
     st.write('\nUpdated SLB Data with Clusters:')
-    st.write(slb_data_for_clustering[['SLB Horizontal Difference (ft.)', 'SLB Depth Difference (ft.)', 'Cluster', 'Nearest Cluster Center']].head())
+    st.write(slb_data_for_clustering[['SLB Horizontal Difference', 'SLB Depth Difference', 'Cluster', 'Nearest Cluster Center']].head())
 
-def custom_kmeans_clustering(slb_data, k_clusters, features=['SLB Depth Difference (ft.)', 'SLB origin time']):
+def custom_kmeans_clustering(slb_data, k_clusters, features=['SLB Depth Difference', 'SLB origin time']):
     scaler = StandardScaler()
 
     slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
@@ -266,7 +266,7 @@ def plot_normalized_time_clustering(slb_data, k_clusters):
 def plot_time_depth_clustering(slb_data, k_clusters):
     slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
     slb_data['TimeInSeconds'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()).dt.total_seconds() + 1
-    features = ['TimeInSeconds', 'SLB Horizontal Difference (ft.)', 'SLB Depth Difference (ft.)']
+    features = ['TimeInSeconds', 'SLB Horizontal Difference', 'SLB Depth Difference']
     kmeans = KMeans(n_clusters=k_clusters, random_state=42)
     slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
 
@@ -274,7 +274,7 @@ def plot_time_depth_clustering(slb_data, k_clusters):
 
     for cluster_id in range(k_clusters):
         cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['TimeInSeconds'], y=cluster_data['SLB Depth Difference (ft.)'],
+        fig.add_trace(go.Scatter(x=cluster_data['TimeInSeconds'], y=cluster_data['SLB Depth Difference'],
                                 mode='markers', name=f'Cluster {cluster_id}',
                                 text=cluster_data['Year/Mo. Category'],  
                                 hoverinfo='text')) 
@@ -286,7 +286,7 @@ def plot_time_depth_clustering(slb_data, k_clusters):
         fig.add_annotation(text=mountain, xref="x", yref="y", x=max(slb_data['TimeInSeconds']), y=height, showarrow=False, yshift=5, xshift=10)
 
     fig.update_layout(title='K-Means Clustering of SLB Data based on Time and Depth Difference',
-                    xaxis_title='Time (Seconds)', yaxis_title='SLB Depth Difference (ft.)',
+                    xaxis_title='Time (Seconds)', yaxis_title='SLB Depth Difference',
                     legend_title='Cluster', showlegend=True,
                     height=600, width=900)
 
@@ -298,19 +298,19 @@ def plot_time_depth_clustering(slb_data, k_clusters):
 
 def plot_depth_normalized_time_clustering(slb_data, k_clusters):
     fig = go.Figure()
-    features = ['SLB Depth Difference (ft.)', 'Normalized Time']
+    features = ['SLB Depth Difference', 'Normalized Time']
     kmeans = KMeans(n_clusters=k_clusters, random_state=42)
     slb_data['Cluster'] = kmeans.fit_predict(slb_data[features])
 
     for cluster_id in range(k_clusters):
         cluster_data = slb_data[slb_data['Cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['SLB Depth Difference (ft.)'], y=cluster_data['Normalized Time'], 
+        fig.add_trace(go.Scatter(x=cluster_data['SLB Depth Difference'], y=cluster_data['Normalized Time'], 
                                  mode='markers', name=f'Cluster {cluster_id}',
                                  text=cluster_data['Year/Mo. Category'],  
                                  hoverinfo='text'))
 
     fig.update_layout(title='K-Means Clustering of SLB Data',
-                      xaxis_title='SLB Depth Difference (ft.)', yaxis_title='Normalized Time')
+                      xaxis_title='SLB Depth Difference', yaxis_title='Normalized Time')
     st.plotly_chart(fig)
     
     cluster_formats = slb_data.groupby('Cluster')['Year/Mo. Category'].unique()
@@ -320,7 +320,7 @@ def plot_depth_normalized_time_clustering(slb_data, k_clusters):
 def normalized_kmeansby_totalVariation(slb_data, k_clusters):
 
     slb_data['Normalized Time'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()) / (slb_data['SLB origin time'].max() - slb_data['SLB origin time'].min())
-    features = ['Normalized Time', 'SLB Depth Difference (ft.)']
+    features = ['Normalized Time', 'SLB Depth Difference']
 
     scaler = StandardScaler()
     slb_cluster_data_scaled = scaler.fit_transform(slb_data[features])
@@ -355,7 +355,7 @@ def normalized_kmeansby_totalVariation(slb_data, k_clusters):
     slb_data['Nearest Cluster Center'] = pairwise_distances_argmin_min(slb_cluster_data_scaled, kmeans.cluster_centers_)[0] + 1
 
     st.write('\nUpdated SLB Data with Clusters:')
-    st.write(slb_data[['SLB origin time', 'SLB Depth Difference (ft.)', 'Cluster', 'Nearest Cluster Center']].head())
+    st.write(slb_data[['SLB origin time', 'SLB Depth Difference', 'Cluster', 'Nearest Cluster Center']].head())
 
 def perform_clustering(slb_data, k_clusters):
     slb_data['SLB origin time'] = pd.to_datetime(slb_data['SLB origin time'])
@@ -363,7 +363,7 @@ def perform_clustering(slb_data, k_clusters):
     slb_data['Normalized Time'] = (slb_data['SLB origin time'] - slb_data['SLB origin time'].min()) / (
                 slb_data['SLB origin time'].max() - slb_data['SLB origin time'].min())
 
-    features = ['Normalized Time', 'SLB Horizontal Difference (ft.)', 'SLB Depth Difference (ft.)', 'SLB Total Difference']
+    features = ['Normalized Time', 'SLB Horizontal Difference', 'SLB Depth Difference', 'SLB Total Difference']
 
     scaler = StandardScaler()
     slb_data_scaled = scaler.fit_transform(slb_data[features])
@@ -373,7 +373,7 @@ def perform_clustering(slb_data, k_clusters):
 
     return slb_data[['SLB origin time', 'Cluster']]
 
-def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB Depth Difference (ft.)', 'SLB Horizontal Difference (ft.)']):
+def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB Depth Difference', 'SLB Horizontal Difference']):
     st.markdown("""
     Performs DBSCAN clustering on the provided dataset.
 
@@ -404,15 +404,15 @@ def perform_dbscan_clustering(slb_data, eps=0.5, min_samples=5, features=['SLB D
 
     for cluster_id in unique_clusters:
         cluster_data = slb_data[slb_data['cluster'] == cluster_id]
-        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference (ft.)'],
-                                 y=cluster_data['SLB Depth Difference (ft.)'],
+        fig.add_trace(go.Scatter(x=cluster_data['SLB Horizontal Difference'],
+                                 y=cluster_data['SLB Depth Difference'],
                                  mode='markers',
                                  marker=dict(color=custom_colors[cluster_id % len(custom_colors)]),
                                  name=f'Cluster {cluster_id}'))
 
     fig.update_layout(title='DBSCAN Clustering of SLB Data',
-                      xaxis_title='SLB Horizontal Difference (ft.)',
-                      yaxis_title='SLB Depth Difference (ft.)')
+                      xaxis_title='SLB Horizontal Difference',
+                      yaxis_title='SLB Depth Difference')
 
     st.plotly_chart(fig)
     
